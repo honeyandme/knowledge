@@ -1,16 +1,19 @@
+import os.path
 import re
 import py2neo
 from tqdm import tqdm
+
 def create_node(client,type,name):
     # node = py2neo.Node(type,名称=name)
     # client.create(node)
     order = """create (n:%s{名称:"%s"})"""%(type,name)
     client.run(order)
+#导入普通实体
 def import_entity(client,type,entity):
     print(f'正在导入{type}类数据')
     for en in tqdm(entity):
         create_node(client,type,en)
-
+#导入疾病类实体
 def import_disease_data(client,type,entity):
     print(f'正在导入{type}类数据')
     for disease in tqdm(entity):
@@ -33,6 +36,7 @@ def create_all_relationship(client,all_relationship):
     for type1, name1,relation, type2,name2  in tqdm(all_relationship):
         create_relationship(client,type1, name1,relation, type2,name2)
 if __name__ == "__main__":
+    #连接neo4j库
     # client = py2neo.Graph('http://localhost:7474', user='neo4j', password='wei8kang7.long', name='neo4j')
 
     # is_delete = input('注意:是否删除neo4j上的所有实体 y/n')
@@ -52,8 +56,16 @@ if __name__ == "__main__":
         "治疗方法":[],
         "药品商":[],
     }
+
     # 实体间的关系
     relationship = []
+
+
+
+
+
+
+    #将所有实体导入到all_entity中，将所有的关系放到relationship中
     for data in all_data:
         if (len(data) < 3):
             continue
@@ -123,13 +135,31 @@ if __name__ == "__main__":
 
 
 
+
+    #将读取的实体保存成文件，放到data中
     all_entity = {k: list(set(v)) if k != "疾病"  else v for k, v in all_entity.items()}
+    for name,entity in all_entity.items():
+        with open(os.path.join('data',f"{name}.txt"),'w',encoding='utf-8') as f:
+            if name=='疾病':
+                en_name=[en['名称'] for en in entity]
+                f.write("\n".join(en_name))
+            else:
+                f.write("\n".join(entity))
     relationship = list(set(relationship))
+
+
+
+
+    # # 保存关系 放到data下
     # with open("./data/rel.txt",'w',encoding='utf-8') as f:
     #     for rel in relationship:
     #         f.write(" ".join(rel))
     #         f.write('\n')
-    # #只有疾病有属性，特判
+
+
+
+
+    # #将属性和实体导入到neo4j上,注:只有疾病有属性，特判
     # for k in all_entity:
     #     if k!="疾病":
     #         import_entity(client,k,all_entity[k])
