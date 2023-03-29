@@ -21,7 +21,7 @@ class Build_Ner_data():
         self.ahos = [ahocorasick.Automaton() for i in range(len(idx2type))]
 
         for type in idx2type:
-            with open(os.path.join('data',f'{type}.txt'),encoding='utf-8') as f:
+            with open(os.path.join('data','ent1',f'{type}.txt'),encoding='utf-8') as f:
                 all_en = f.read().split('\n')
             for en in all_en:
                 if len(en)>=2:

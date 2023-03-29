@@ -1,6 +1,11 @@
 import json
 import os
-
+all_entities = {
+        "疾病": [],
+        "药品": [],
+        "检查项目": [],
+        "疾病症状": [],
+    }
 #将data/CMeEE-V2  (ner数据集)，转换一下数据格式。转换后的文件保存在data下的ner_train.txt和ner_dev.txt中
 def load_data(path):
     with open(path,'r',encoding='utf8') as f:
@@ -16,6 +21,7 @@ def load_data(path):
         for entity in entities:
             if(entity['type'] not in need_entities):
                 continue
+            all_entities[mp[entity['type']]].append(entity['entity'])
             flag = True
             label[entity['start_idx']:entity['start_idx']+1] = ['B-'+mp[entity['type']]]+['I-'+mp[entity['type']]]*(entity['end_idx']-entity['start_idx'])
         if flag:
@@ -32,5 +38,12 @@ if __name__== "__main__":
     train_data,train_label = load_data(os.path.join('data', 'CMeEE-V2','CMeEE-V2_train.json'))
     dev_data, dev_label = load_data(os.path.join('data', 'CMeEE-V2', 'CMeEE-V2_dev.json'))
 
+
     build_file(train_data,train_label,os.path.join('data','ner_train.txt'))
     build_file(train_data, train_label, os.path.join('data', 'ner_dev.txt'))
+
+    print()
+    for name,entity in all_entities.items():
+        with open(os.path.join('data','ent2',f'{name}.txt'),'w',encoding='utf-8') as f:
+            entity = list(set(entity))
+            f.write('\n'.join(entity))
