@@ -3,7 +3,7 @@ import random
 #自动机 用于字符串匹配
 import ahocorasick
 import re
-
+from tqdm import tqdm
 
 class Build_Ner_data():
     """
@@ -109,7 +109,7 @@ if __name__ == "__main__":
 
     all_text,all_label = [],[]
 
-    for data in all_data:
+    for data in tqdm(all_data):
         if len(data)<2:
             continue
         data = eval(data)
