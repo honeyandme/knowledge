@@ -26,6 +26,56 @@ def get_data(path,max_len=None):
     if max_len is not None:
         return all_text[:max_len], all_tag[:max_len]
     return all_text,all_tag
+
+
+
+#找出tag(label)中的所有实体及其下表，为实体动态替换/随机掩码策略/实体动态拼接做准备
+def find_entities(tag):
+    result = []#[(2,3,'药品'),(7,10,'药品商')]
+    label_len = len(tag)
+    i = 0
+    while(i<label_len):
+        if(tag[i][0]=='B'):
+            type = tag[i].strip('B-')
+            j=i+1
+            while(j<label_len and tag[j][0]=='I'):
+                j += 1
+            result.append((i,j-1,type))
+            i=j
+        else:
+            i = i + 1
+    return result
+
+
+
+
+class Entity_Extend:
+    def __init__(self):
+        eneities_path = os.path.join('data','ent')
+        files = os.listdir(eneities_path)
+        files = [docu for docu in files if '.py' not in docu]
+
+        self.type2entity = {}
+
+        for type in files:
+            with open(os.path.join(eneities_path,type),'r',encoding='utf-8') as f:
+                entities = f.read().split('\n')
+                self.type2entity[type] = entities
+
+    def entities_extend(self,text,tag,ents):
+        new_text = ""
+        new_tag = []
+
+        pass  # 1. 实体替换
+        pass  # 2. 实体掩盖
+        pass  # 3. 实体拼接
+        pass  # 4. 上下文替换
+
+        return new_text, new_tag
+
+
+
+
 class Nerdataset(Dataset):
     def __init__(self,all_text,all_label,tokenizer,max_len,tag2idx,is_dev=False):
         self.all_text = all_text
@@ -34,12 +84,14 @@ class Nerdataset(Dataset):
         self.max_len= max_len
         self.tag2idx = tag2idx
         self.is_dev = is_dev
+        self.entity_extend = Entity_Extend()
     def __getitem__(self, x):
         if self.is_dev:
             max_len = len(self.all_text[x])+2
         else:
             max_len = self.max_len
         text,label = self.all_text[x][:max_len-2],self.all_label[x][:max_len-2]
+        res = find_entities(label)
         x_len = len(text)
         assert len(text)==len(label)
         text_idx = self.tokenizer.encode(text,add_special_token=True)
@@ -50,12 +102,19 @@ class Nerdataset(Dataset):
         return torch.tensor(text_idx),torch.tensor(label_idx),x_len
     def __len__(self):
         return len(self.all_text)
+
+
+
+
 def build_tag2idx(all_tag):
     tag2idx = {'<PAD>':0}
     for sen in all_tag:
         for tag in sen:
             tag2idx[tag] = tag2idx.get(tag,len(tag2idx))
     return tag2idx
+
+
+
 
 class Bert_Model(nn.Module):
     def __init__(self,model_name,hidden_size,tag_num,bi):
@@ -76,6 +135,10 @@ class Bert_Model(nn.Module):
             return loss
         else:
             return torch.argmax(pre,dim=-1).squeeze(0)
+
+
+
+
 
 if __name__ == "__main__":
     all_text,all_label = get_data(os.path.join('data','prodata','all_ner_data.txt'),10000)
