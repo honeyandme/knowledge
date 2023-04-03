@@ -86,12 +86,15 @@ class Nerdataset(Dataset):
         self.is_dev = is_dev
         self.entity_extend = Entity_Extend()
     def __getitem__(self, x):
+        text, label = self.all_text[x], self.all_label[x]
         if self.is_dev:
-            max_len = len(self.all_text[x])+2
+            max_len = min(len(self.all_text[x])+2,500)
         else:
+            # 几种策略
+            # res = find_entities(label)
             max_len = self.max_len
-        text,label = self.all_text[x][:max_len-2],self.all_label[x][:max_len-2]
-        res = find_entities(label)
+        text, label =text[:max_len - 2], label[:max_len - 2]
+
         x_len = len(text)
         assert len(text)==len(label)
         text_idx = self.tokenizer.encode(text,add_special_token=True)
@@ -141,7 +144,7 @@ class Bert_Model(nn.Module):
 
 
 if __name__ == "__main__":
-    all_text,all_label = get_data(os.path.join('data','prodata','all_ner_data.txt'),10000)
+    all_text,all_label = get_data(os.path.join('data','prodata','all_ner_data.txt'))
     train_text, dev_text, train_label, dev_label = train_test_split(all_text, all_label, test_size = 0.02, random_state = 42)
     tag2idx = build_tag2idx(all_label)
     idx2tag = list(tag2idx)
@@ -156,7 +159,6 @@ if __name__ == "__main__":
     lr =1e-5
 
     device = torch.device('mps') if torch.backends.mps.is_available()   else torch.device('cpu')
-    # device = torch.device('cpu')
 
     train_dataset = Nerdataset(train_text,train_label,tokenizer,max_len,tag2idx)
     train_dataloader = DataLoader(train_dataset,batch_size=batch_size,shuffle=True)
@@ -180,12 +182,16 @@ if __name__ == "__main__":
             loss_sum+=loss
             ba += 1
         all_pre = []
+        all_label = []
         for x,y,batch_len in tqdm(dev_dataloader):
+            assert len(x)==len(y)
             x = x.to(device)
             pre = model(x)
             pre = [idx2tag[i] for i in pre[1:batch_len+1]]
             all_pre.append(pre)
 
-        print(f'e={e},loss={loss_sum/ba:.5f} f1={f1_score(all_pre,dev_label)}')
+            label = [idx2tag[i] for i in y[0][1:batch_len+1]]
+            all_label.append(label)
+        print(f'e={e},loss={loss_sum/ba:.5f} f1={f1_score(all_pre,all_label)}')
 
 
