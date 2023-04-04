@@ -1,3 +1,5 @@
+import random
+
 import torch
 from torch import nn
 import os
@@ -60,16 +62,47 @@ class Entity_Extend:
         for type in files:
             with open(os.path.join(eneities_path,type),'r',encoding='utf-8') as f:
                 entities = f.read().split('\n')
+                type = type.strip('.txt')
                 self.type2entity[type] = entities
+    def no_work(self,te,tag,type):
+        return te,tag
 
+    # 1. 实体替换
+    def entity_replace(self,te,ta,type):
+        choice_ent = random.choice(self.type2entity[type])
+        ta = ["B-"+type] + ["I-"+type]*(len(choice_ent)-1)
+        return list(choice_ent),ta
+
+    # 2. 实体掩盖
+    def entity_mask(self,te,ta,type):
+        if(len(te)<=3):
+            return te,ta
+        elif(len(te)<=5):
+            te.pop(random.randint(0,len(te)-1))
+        else:
+            te.pop(random.randint(0, len(te) - 1))
+            te.pop(random.randint(0, len(te) - 1))
+        ta = ["B-" + type] + ["I-" + type] * (len(te) - 1)
+        return te,ta
+
+    # 3. 实体拼接
+    def entity_union(self,te,ta,type):
+        words = ['和','与','以及','还有']
+        wor = random.choice(words)
+        choice_ent = random.choice(self.type2entity[type])
+        te = te+list(wor)+list(choice_ent)
+        ta = ta+['O']*len(wor)+["B-"+type] + ["I-"+type]*(len(choice_ent)-1)
+        return te,ta
     def entities_extend(self,text,tag,ents):
-        new_text = ""
-        new_tag = []
-
-        pass  # 1. 实体替换
-        pass  # 2. 实体掩盖
-        pass  # 3. 实体拼接
-        pass  # 4. 上下文替换
+        cho = [self.no_work,self.no_work,self.entity_replace,self.entity_mask,self.entity_union,self.entity_union]
+        new_text = text.copy()
+        new_tag = tag.copy()
+        sign = 0
+        for ent in ents:
+            p = random.choice(cho)
+            te,ta = p(text[ent[0]:ent[1]+1],tag[ent[0]:ent[1]+1],ent[2])
+            new_text[ent[0] + sign:ent[1] + 1 + sign], new_tag[ent[0] + sign:ent[1] + 1 + sign] = te,ta
+            sign += len(te)-(ent[1]-ent[0]+1)
 
         return new_text, new_tag
 
@@ -91,7 +124,8 @@ class Nerdataset(Dataset):
             max_len = min(len(self.all_text[x])+2,500)
         else:
             # 几种策略
-            # res = find_entities(label)
+            ents = find_entities(label)
+            text,label = self.entity_extend.entities_extend(text,label,ents)
             max_len = self.max_len
         text, label =text[:max_len - 2], label[:max_len - 2]
 
@@ -144,7 +178,7 @@ class Bert_Model(nn.Module):
 
 
 if __name__ == "__main__":
-    all_text,all_label = get_data(os.path.join('data','prodata','all_ner_data.txt'))
+    all_text,all_label = get_data(os.path.join('data','prodata','all_ner_data.txt'),10000)
     train_text, dev_text, train_label, dev_label = train_test_split(all_text, all_label, test_size = 0.02, random_state = 42)
     tag2idx = build_tag2idx(all_label)
     idx2tag = list(tag2idx)
@@ -159,6 +193,7 @@ if __name__ == "__main__":
     lr =1e-5
 
     device = torch.device('mps') if torch.backends.mps.is_available()   else torch.device('cpu')
+    # device = torch.device('cpu')
 
     train_dataset = Nerdataset(train_text,train_label,tokenizer,max_len,tag2idx)
     train_dataloader = DataLoader(train_dataset,batch_size=batch_size,shuffle=True)
