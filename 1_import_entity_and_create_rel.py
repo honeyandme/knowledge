@@ -1,4 +1,5 @@
 import os.path
+import random
 import re
 import py2neo
 from tqdm import tqdm
@@ -139,11 +140,12 @@ if __name__ == "__main__":
     #将读取的实体保存成文件，放到data中
     all_entity = {k: list(set(v)) if k != "疾病"  else v for k, v in all_entity.items()}
     for name,entity in all_entity.items():
-        with open(os.path.join('data',f"{name}.txt"),'w',encoding='utf-8') as f:
+        with open(os.path.join('data','ent1',f"{name}.txt"),'w',encoding='utf-8') as f:
             if name=='疾病':
-                en_name=[en['名称'] for en in entity]
+                en_name=[en['名称'].strip('，') for en in entity if (len(en)<=15 or random.random()<0.2) and len(en)>=2]
                 f.write("\n".join(en_name))
             else:
+                entity = [en.strip('，') for en in entity if (len(en)<=15 or random.random()<0.2) and len(en)>=2]
                 f.write("\n".join(entity))
     relationship = list(set(relationship))
 

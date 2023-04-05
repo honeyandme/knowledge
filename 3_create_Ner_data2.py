@@ -82,21 +82,26 @@ class Build_Ner_data():
         """
         label = ['O']*len(text)
         flag = 0
+        mp = {}
         for type in self.idx2type:
             li = list(self.ahos[self.type2idx[type]].iter(text))
             if len(li)==0:
                 continue
-
+            li = sorted(li,key=lambda x:len(x[1]),reverse=True)
             for en in li:
                 ed,name = en
                 st = ed-len(name)+1
+                if st in mp or ed in mp:
+                    continue
                 label[st:ed+1] = ['B-'+type] + ['I-'+type]*(ed-st)
                 flag = flag+1
+                for i in range(st,ed+1):
+                    mp[i] = 1
         return label,flag
 
 #将文本和对应的标签写入ner_data2.txt
 def build_file(all_text,all_label):
-    with open(os.path.join('data','ner_data2.txt'),"w",encoding="utf-8") as f:
+    with open(os.path.join('data','prodata','ner_data2.txt'),"w",encoding="utf-8") as f:
         for text, label in zip(all_text, all_label):
             for t, l in zip(text, label):
                 f.write(f'{t} {l}\n')

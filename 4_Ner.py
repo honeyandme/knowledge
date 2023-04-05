@@ -62,6 +62,7 @@ class Entity_Extend:
         for type in files:
             with open(os.path.join(eneities_path,type),'r',encoding='utf-8') as f:
                 entities = f.read().split('\n')
+                entities = [ent for ent in entities if len(ent)<=6]
                 type = type.strip('.txt')
                 self.type2entity[type] = entities
     def no_work(self,te,tag,type):
@@ -87,14 +88,14 @@ class Entity_Extend:
 
     # 3. 实体拼接
     def entity_union(self,te,ta,type):
-        words = ['和','与','以及','还有']
+        words = ['和','与','以及']
         wor = random.choice(words)
         choice_ent = random.choice(self.type2entity[type])
         te = te+list(wor)+list(choice_ent)
         ta = ta+['O']*len(wor)+["B-"+type] + ["I-"+type]*(len(choice_ent)-1)
         return te,ta
     def entities_extend(self,text,tag,ents):
-        cho = [self.no_work,self.no_work,self.entity_replace,self.entity_mask,self.entity_union,self.entity_union]
+        cho = [self.no_work,self.entity_union,self.entity_mask,self.entity_replace,self.no_work]
         new_text = text.copy()
         new_tag = tag.copy()
         sign = 0
@@ -110,7 +111,7 @@ class Entity_Extend:
 
 
 class Nerdataset(Dataset):
-    def __init__(self,all_text,all_label,tokenizer,max_len,tag2idx,is_dev=False):
+    def __init__(self,all_text,all_label,tokenizer,max_len,tag2idx,is_dev=False,enhance_data=False):
         self.all_text = all_text
         self.all_label = all_label
         self.tokenizer = tokenizer
@@ -118,14 +119,16 @@ class Nerdataset(Dataset):
         self.tag2idx = tag2idx
         self.is_dev = is_dev
         self.entity_extend = Entity_Extend()
+        self.enhance_data = enhance_data
     def __getitem__(self, x):
         text, label = self.all_text[x], self.all_label[x]
         if self.is_dev:
             max_len = min(len(self.all_text[x])+2,500)
         else:
             # 几种策略
-            ents = find_entities(label)
-            text,label = self.entity_extend.entities_extend(text,label,ents)
+            if self.enhance_data and e>=3:
+                ents = find_entities(label)
+                text,label = self.entity_extend.entities_extend(text,label,ents)
             max_len = self.max_len
         text, label =text[:max_len - 2], label[:max_len - 2]
 
@@ -157,7 +160,7 @@ class Bert_Model(nn.Module):
     def __init__(self,model_name,hidden_size,tag_num,bi):
         super().__init__()
         self.bert = BertModel.from_pretrained(model_name)
-        self.gru = nn.RNN(input_size=768,hidden_size=hidden_size,num_layers=1,batch_first=True,bidirectional=bi)
+        self.gru = nn.RNN(input_size=768,hidden_size=hidden_size,num_layers=2,batch_first=True,bidirectional=bi)
         if bi:
             self.classifier = nn.Linear(hidden_size*2,tag_num)
         else:
@@ -178,55 +181,75 @@ class Bert_Model(nn.Module):
 
 
 if __name__ == "__main__":
-    all_text,all_label = get_data(os.path.join('data','prodata','all_ner_data.txt'),10000)
+    all_text,all_label = get_data(os.path.join('data','prodata','all_ner_data.txt'))
     train_text, dev_text, train_label, dev_label = train_test_split(all_text, all_label, test_size = 0.02, random_state = 42)
     tag2idx = build_tag2idx(all_label)
     idx2tag = list(tag2idx)
 
     max_len = 50
-    epoch = 10
-    batch_size = 40
+    epoch = 100
+    batch_size = 60
     hidden_size = 128
     bi = True
-    model_name='./bert_base_chinese'
+    model_name='bert_base_chinese'
     tokenizer = BertTokenizer.from_pretrained(model_name)
     lr =1e-5
+    is_train=True
 
     device = torch.device('mps') if torch.backends.mps.is_available()   else torch.device('cpu')
     # device = torch.device('cpu')
 
-    train_dataset = Nerdataset(train_text,train_label,tokenizer,max_len,tag2idx)
+    train_dataset = Nerdataset(train_text,train_label,tokenizer,max_len,tag2idx,enhance_data=True)
     train_dataloader = DataLoader(train_dataset,batch_size=batch_size,shuffle=True)
 
     dev_dataset = Nerdataset(dev_text, dev_label, tokenizer, max_len, tag2idx,is_dev=True)
     dev_dataloader = DataLoader(dev_dataset, batch_size=1, shuffle=False)
 
-    model = Bert_Model(model_name,hidden_size,len(tag2idx),bi).to(device)
+    model = Bert_Model(model_name,hidden_size,len(tag2idx),bi)
+    if os.path.exists('best_model.pt'):
+        model.load_state_dict(torch.load('best_model.pt'))
+    model = model.to(device)
     opt = torch.optim.Adam(model.parameters(),lr = lr)
-    for e in range(epoch):
-        loss_sum = 0
-        ba = 0
-        for x,y,batch_len in tqdm(train_dataloader):
-            x = x.to(device)
-            y = y.to(device)
-            opt.zero_grad()
-            loss = model(x,y)
-            loss.backward()
+    bestf1 = -1
+    if is_train:
+        for e in range(epoch):
+            loss_sum = 0
+            ba = 0
+            for x,y,batch_len in tqdm(train_dataloader):
+                x = x.to(device)
+                y = y.to(device)
+                opt.zero_grad()
+                loss = model(x,y)
+                loss.backward()
 
-            opt.step()
-            loss_sum+=loss
-            ba += 1
-        all_pre = []
-        all_label = []
-        for x,y,batch_len in tqdm(dev_dataloader):
-            assert len(x)==len(y)
-            x = x.to(device)
-            pre = model(x)
-            pre = [idx2tag[i] for i in pre[1:batch_len+1]]
-            all_pre.append(pre)
+                opt.step()
+                loss_sum+=loss
+                ba += 1
+            all_pre = []
+            all_label = []
+            for x,y,batch_len in tqdm(dev_dataloader):
+                assert len(x)==len(y)
+                x = x.to(device)
+                pre = model(x)
+                pre = [idx2tag[i] for i in pre[1:batch_len+1]]
+                all_pre.append(pre)
 
-            label = [idx2tag[i] for i in y[0][1:batch_len+1]]
-            all_label.append(label)
-        print(f'e={e},loss={loss_sum/ba:.5f} f1={f1_score(all_pre,all_label)}')
+                label = [idx2tag[i] for i in y[0][1:batch_len+1]]
+                all_label.append(label)
+            f1 = f1_score(all_pre, all_label)
+            if f1>bestf1:
+                bestf1 = f1
+                print(f'e={e},loss={loss_sum / ba:.5f} f1={f1:.5f} ---------------------->best')
+                torch.save(model.state_dict(),'best_model.pt')
+            else:print(f'e={e},loss={loss_sum/ba:.5f} f1={f1:.5f}')
+
+    while True:
+        sen = input('请输入识别的话:')
+        sen_to = tokenizer.encode(sen,add_special_tokens=True,return_tensors='pt').to(device)
+
+        pre = model(sen_to).tolist()
+
+        pre_tag = [idx2tag[i] for i in pre[1:-1]]
+        print(pre_tag)
 
 
