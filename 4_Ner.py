@@ -8,6 +8,7 @@ from torch.utils.data import Dataset,DataLoader
 from transformers import BertModel,BertTokenizer
 from tqdm import tqdm
 from seqeval.metrics import f1_score
+import ahocorasick
 def get_data(path,max_len=None):
     all_text,all_tag = [],[]
     with open(path,'r',encoding='utf8') as f:
@@ -29,6 +30,37 @@ def get_data(path,max_len=None):
         return all_text[:max_len], all_tag[:max_len]
     return all_text,all_tag
 
+class rule_find:
+    def __init__(self):
+        self.idx2type = idx2type = ["食物", "药品商", "治疗方法", "药品","检查项目","疾病","疾病症状","科目"]
+        self.type2idx = type2idx = {"食物": 0, "药品商": 1, "治疗方法": 2, "药品": 3,"检查项目":4,"疾病":5,"疾病症状":6,"科目":7}
+        self.ahos = [ahocorasick.Automaton() for i in range(len(self.type2idx))]
+
+        for type in idx2type:
+            with open(os.path.join('data','ent1',f'{type}.txt'),encoding='utf-8') as f:
+                all_en = f.read().split('\n')
+            for en in all_en:
+                if len(en)>=2:
+                    self.ahos[type2idx[type]].add_word(en,en)
+        for i in range(len(self.ahos)):
+            self.ahos[i].make_automaton()
+
+    def find(self,sen):
+        rule_result = []
+        mp = {}
+        for i in range(len(self.ahos)):
+            all_res = list(self.ahos[i].iter(sen))
+            if len(all_res)!=0:
+                all_res = sorted(all_res,key=lambda x:len(x[1]),reverse=True)
+                for res in all_res:
+                    be =res[0]-len(res[1])+1
+                    ed = res[0]
+                    if be in mp or ed in mp:
+                        continue
+                    rule_result.append((be,ed,self.idx2type[i],res[1]))
+                    for t in range(be,ed+1):
+                        mp[t] = 1
+        return rule_result
 
 
 #找出tag(label)中的所有实体及其下表，为实体动态替换/随机掩码策略/实体动态拼接做准备
@@ -194,7 +226,7 @@ if __name__ == "__main__":
     model_name='bert_base_chinese'
     tokenizer = BertTokenizer.from_pretrained(model_name)
     lr =1e-5
-    is_train=True
+    is_train=False
 
     device = torch.device('mps') if torch.backends.mps.is_available()   else torch.device('cpu')
     # device = torch.device('cpu')
@@ -243,6 +275,8 @@ if __name__ == "__main__":
                 torch.save(model.state_dict(),'best_model.pt')
             else:print(f'e={e},loss={loss_sum/ba:.5f} f1={f1:.5f}')
 
+
+    rule = rule_find()
     while True:
         sen = input('请输入识别的话:')
         sen_to = tokenizer.encode(sen,add_special_tokens=True,return_tensors='pt').to(device)
@@ -250,6 +284,11 @@ if __name__ == "__main__":
         pre = model(sen_to).tolist()
 
         pre_tag = [idx2tag[i] for i in pre[1:-1]]
-        print(pre_tag)
-
-
+        model_result = find_entities(pre_tag)
+        model_result_word = []
+        for res in model_result:
+            word = sen[res[0]:res[1]+1]
+            model_result_word.append((res[0],res[1],res[2],word))
+        rule_result = rule.find(sen)
+        print('模型结果',model_result_word)
+        print('规则结果',rule_result)
