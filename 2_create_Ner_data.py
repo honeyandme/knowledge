@@ -17,6 +17,8 @@ def load_data(path):
     for d in data:
         flag = False
         text,entities = d['text'],d['entities']
+        if '发热' in text:
+            print("")
         label = ['O']*len(text)
         for entity in entities:
             if(entity['type'] not in need_entities):
@@ -39,11 +41,11 @@ if __name__== "__main__":
     dev_data, dev_label = load_data(os.path.join('data', 'CMeEE-V2', 'CMeEE-V2_dev.json'))
 
 
-    build_file(train_data,train_label,os.path.join('data','ner_train.txt'))
-    build_file(train_data, train_label, os.path.join('data', 'ner_dev.txt'))
-
-    print()
-    for name,entity in all_entities.items():
-        with open(os.path.join('data','ent2',f'{name}.txt'),'w',encoding='utf-8') as f:
-            entity = list(set(entity))
-            f.write('\n'.join(entity))
+    # build_file(train_data,train_label,os.path.join('data','ner_train.txt'))
+    # build_file(train_data, train_label, os.path.join('data', 'ner_dev.txt'))
+    #
+    # print()
+    # for name,entity in all_entities.items():
+    #     with open(os.path.join('data','ent2',f'{name}.txt'),'w',encoding='utf-8') as f:
+    #         entity = list(set(entity))
+    #         f.write('\n'.join(entity))

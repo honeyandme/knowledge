@@ -37,7 +37,7 @@ class rule_find:
         self.ahos = [ahocorasick.Automaton() for i in range(len(self.type2idx))]
 
         for type in idx2type:
-            with open(os.path.join('data','ent1',f'{type}.txt'),encoding='utf-8') as f:
+            with open(os.path.join('data','ent',f'{type}.txt'),encoding='utf-8') as f:
                 all_en = f.read().split('\n')
             for en in all_en:
                 if len(en)>=2:
@@ -158,7 +158,7 @@ class Nerdataset(Dataset):
             max_len = min(len(self.all_text[x])+2,500)
         else:
             # 几种策略
-            if self.enhance_data and e>=3:
+            if self.enhance_data and e>=10 and e %2==0:
                 ents = find_entities(label)
                 text,label = self.entity_extend.entities_extend(text,label,ents)
             max_len = self.max_len
@@ -192,6 +192,9 @@ class Bert_Model(nn.Module):
     def __init__(self,model_name,hidden_size,tag_num,bi):
         super().__init__()
         self.bert = BertModel.from_pretrained(model_name)
+        # for name, param in self.bert.named_parameters():
+        #     if 'layer' in name:
+        #         param.requires_grad = False
         self.gru = nn.RNN(input_size=768,hidden_size=hidden_size,num_layers=2,batch_first=True,bidirectional=bi)
         if bi:
             self.classifier = nn.Linear(hidden_size*2,tag_num)
@@ -219,7 +222,7 @@ if __name__ == "__main__":
     idx2tag = list(tag2idx)
 
     max_len = 50
-    epoch = 100
+    epoch = 30
     batch_size = 60
     hidden_size = 128
     bi = True
@@ -245,6 +248,10 @@ if __name__ == "__main__":
     bestf1 = -1
     if is_train:
         for e in range(epoch):
+            if e==10:
+                opt.param_groups[0]['lr'] /= 3.0
+            elif e==20:
+                opt.param_groups[0]['lr'] /= 3.0
             loss_sum = 0
             ba = 0
             for x,y,batch_len in tqdm(train_dataloader):
@@ -277,6 +284,7 @@ if __name__ == "__main__":
 
 
     rule = rule_find()
+    print("")
     while True:
         sen = input('请输入识别的话:')
         sen_to = tokenizer.encode(sen,add_special_tokens=True,return_tensors='pt').to(device)
