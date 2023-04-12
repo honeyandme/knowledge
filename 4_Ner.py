@@ -218,10 +218,18 @@ class Bert_Model(nn.Module):
             return loss
         else:
             return torch.argmax(pre,dim=-1).squeeze(0)
-
-
-
-
+def merge(model_result_word,rule_result):
+    result = model_result_word+rule_result
+    result = sorted(result,key=lambda x:len(x[-1]),reverse=True)
+    check_result = []
+    mp = {}
+    for res in result:
+        if res[0] in mp or res[1] in mp:
+            continue
+        check_result.append(res)
+        for i in range(res[0],res[1]+1):
+            mp[i] = 1
+    return check_result
 
 if __name__ == "__main__":
     all_text,all_label = get_data(os.path.join('data','prodata','all_ner_data.txt'))
@@ -305,5 +313,8 @@ if __name__ == "__main__":
             word = sen[res[0]:res[1]+1]
             model_result_word.append((res[0],res[1],res[2],word))
         rule_result = rule.find(sen)
+
+        merge_result = merge(model_result_word,rule_result)
         print('模型结果',model_result_word)
         print('规则结果',rule_result)
+        print('整合结果',merge_result)
