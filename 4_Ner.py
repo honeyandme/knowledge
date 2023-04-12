@@ -1,5 +1,4 @@
 import random
-
 import torch
 from torch import nn
 import os
@@ -9,6 +8,10 @@ from transformers import BertModel,BertTokenizer
 from tqdm import tqdm
 from seqeval.metrics import f1_score
 import ahocorasick
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+
 def get_data(path,max_len=None):
     all_text,all_tag = [],[]
     with open(path,'r',encoding='utf8') as f:

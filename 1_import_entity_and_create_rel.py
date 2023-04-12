@@ -203,10 +203,17 @@ if __name__ == "__main__":
     all_entity['疾病'] = [en['名称'] for en in all_entity['疾病']]
     all_entity = {k: list(set(v))  for k, v in all_entity.items()}
     rule = rule_find(all_entity)
+
+    #初始化词频
+    for ty,entities in all_entity.items():
+        for en in entities:
+            cipin[ty][en] = 0
+
     for des in tqdm(now_entity):
         rule.find(des['疾病简介'])
         rule.find(des['疾病病因'])
         rule.find(des['预防措施'])
+
     for name, entity in cipin.items():
         with open(os.path.join('data', 'ent1', f'{name}.txt'), 'w', encoding='utf-8') as f:
             for en, num in entity.items():
