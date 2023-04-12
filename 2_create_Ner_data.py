@@ -1,10 +1,10 @@
 import json
 import os
 all_entities = {
-        "疾病": [],
-        "药品": [],
-        "检查项目": [],
-        "疾病症状": [],
+        "疾病": {},
+        "药品": {},
+        "检查项目": {},
+        "疾病症状": {},
     }
 #将data/CMeEE-V2  (ner数据集)，转换一下数据格式。转换后的文件保存在data下的ner_train.txt和ner_dev.txt中
 def load_data(path):
@@ -17,13 +17,15 @@ def load_data(path):
     for d in data:
         flag = False
         text,entities = d['text'],d['entities']
-        if '发热' in text:
-            print("")
         label = ['O']*len(text)
         for entity in entities:
             if(entity['type'] not in need_entities):
                 continue
-            all_entities[mp[entity['type']]].append(entity['entity'])
+            if entity['entity'] in all_entities[mp[entity['type']]]:
+                all_entities[mp[entity['type']]][entity['entity']]+=1
+            else:
+                all_entities[mp[entity['type']]][entity['entity']] = 1
+
             flag = True
             label[entity['start_idx']:entity['start_idx']+1] = ['B-'+mp[entity['type']]]+['I-'+mp[entity['type']]]*(entity['end_idx']-entity['start_idx'])
         if flag:
@@ -45,7 +47,7 @@ if __name__== "__main__":
     # build_file(train_data, train_label, os.path.join('data', 'ner_dev.txt'))
     #
     # print()
-    # for name,entity in all_entities.items():
-    #     with open(os.path.join('data','ent2',f'{name}.txt'),'w',encoding='utf-8') as f:
-    #         entity = list(set(entity))
-    #         f.write('\n'.join(entity))
+    for name,entity in all_entities.items():
+        with open(os.path.join('data','ent2',f'{name}.txt'),'w',encoding='utf-8') as f:
+            for en,num in entity.items():
+                f.write(f"{en} {num}\n")

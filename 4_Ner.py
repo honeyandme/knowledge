@@ -40,6 +40,7 @@ class rule_find:
             with open(os.path.join('data','ent',f'{type}.txt'),encoding='utf-8') as f:
                 all_en = f.read().split('\n')
             for en in all_en:
+                en = en.split(' ')[0]
                 if len(en)>=2:
                     self.ahos[type2idx[type]].add_word(en,en)
         for i in range(len(self.ahos)):
@@ -90,19 +91,23 @@ class Entity_Extend:
         files = [docu for docu in files if '.py' not in docu]
 
         self.type2entity = {}
-
+        self.type2weight = {}
         for type in files:
             with open(os.path.join(eneities_path,type),'r',encoding='utf-8') as f:
                 entities = f.read().split('\n')
-                entities = [ent for ent in entities if len(ent)<=6]
+                entities = [ent for ent in entities if len(ent.split(' ')[0])<=15 and len(ent.split(' ')[0])>=1]
+                en_name = [ent.split(' ')[0] for ent in entities]
+                en_weight = [int(ent.split(' ')[1]) for ent in entities]
                 type = type.strip('.txt')
-                self.type2entity[type] = entities
+                self.type2entity[type] = en_name
+                self.type2weight[type] = en_weight
+        print()
     def no_work(self,te,tag,type):
         return te,tag
 
     # 1. 实体替换
     def entity_replace(self,te,ta,type):
-        choice_ent = random.choice(self.type2entity[type])
+        choice_ent = random.choices(self.type2entity[type],weights=self.type2weight[type],k=1)[0]
         ta = ["B-"+type] + ["I-"+type]*(len(choice_ent)-1)
         return list(choice_ent),ta
 
@@ -122,7 +127,7 @@ class Entity_Extend:
     def entity_union(self,te,ta,type):
         words = ['和','与','以及']
         wor = random.choice(words)
-        choice_ent = random.choice(self.type2entity[type])
+        choice_ent = random.choices(self.type2entity[type],weights=self.type2weight[type],k=1)[0]
         te = te+list(wor)+list(choice_ent)
         ta = ta+['O']*len(wor)+["B-"+type] + ["I-"+type]*(len(choice_ent)-1)
         return te,ta
@@ -158,7 +163,7 @@ class Nerdataset(Dataset):
             max_len = min(len(self.all_text[x])+2,500)
         else:
             # 几种策略
-            if self.enhance_data and e>=10 and e %2==0:
+            if self.enhance_data and e>=7 and e%2==1:
                 ents = find_entities(label)
                 text,label = self.entity_extend.entities_extend(text,label,ents)
             max_len = self.max_len
@@ -222,17 +227,16 @@ if __name__ == "__main__":
     idx2tag = list(tag2idx)
 
     max_len = 50
-    epoch = 30
+    epoch = 20
     batch_size = 60
     hidden_size = 128
     bi = True
-    model_name='bert_base_chinese'
+    model_name='hfl/chinese-roberta-wwm-ext'#bert_base_chinese
     tokenizer = BertTokenizer.from_pretrained(model_name)
     lr =1e-5
     is_train=False
 
     device = torch.device('mps') if torch.backends.mps.is_available()   else torch.device('cpu')
-    # device = torch.device('cpu')
 
     train_dataset = Nerdataset(train_text,train_label,tokenizer,max_len,tag2idx,enhance_data=True)
     train_dataloader = DataLoader(train_dataset,batch_size=batch_size,shuffle=True)
@@ -248,10 +252,10 @@ if __name__ == "__main__":
     bestf1 = -1
     if is_train:
         for e in range(epoch):
-            if e==10:
-                opt.param_groups[0]['lr'] /= 3.0
-            elif e==20:
-                opt.param_groups[0]['lr'] /= 3.0
+            if e==7:
+                opt.param_groups[0]['lr'] /= 5.0
+            elif e==15:
+                opt.param_groups[0]['lr'] /= 5.0
             loss_sum = 0
             ba = 0
             for x,y,batch_len in tqdm(train_dataloader):

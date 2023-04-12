@@ -4,6 +4,17 @@ import re
 import py2neo
 from tqdm import tqdm
 
+cipin = {
+        "疾病": {},
+        "药品": {},
+        "食物": {},
+        "检查项目": {},
+        "科目": {},
+        "疾病症状": {},
+        "治疗方法": {},
+        "药品商": {},
+    }
+
 def create_node(client,type,name):
     # node = py2neo.Node(type,名称=name)
     # client.create(node)
@@ -36,6 +47,29 @@ def create_all_relationship(client,all_relationship):
     print("正在导入关系.....")
     for type1, name1,relation, type2,name2  in tqdm(all_relationship):
         create_relationship(client,type1, name1,relation, type2,name2)
+import ahocorasick
+class rule_find:
+    def __init__(self,all_entity):
+        self.ahos = [ahocorasick.Automaton() for i in range(len(all_entity))]
+        self.idx2type = list(all_entity.keys())
+        self.type2idx = {k:v for v,k in enumerate(self.idx2type)}
+        for type,entities in all_entity.items():
+
+            for en in entities:
+                if len(en)>=2:
+                    self.ahos[self.type2idx[type]].add_word(en,en)
+        for i in range(len(self.ahos)):
+            self.ahos[i].make_automaton()
+    def find(self,sen):
+        rule_result = []
+        for i in range(len(self.ahos)):
+            all_res = list(self.ahos[i].iter(sen))
+            for res in all_res:
+                if res[1] in  cipin[self.idx2type[i]]:
+                    cipin[self.idx2type[i]][res[1]] +=1
+                else:
+                    cipin[self.idx2type[i]][res[1]] = 1
+        return rule_result
 if __name__ == "__main__":
     #连接neo4j库
     # client = py2neo.Graph('http://localhost:7474', user='neo4j', password='wei8kang7.long', name='neo4j')
@@ -137,16 +171,9 @@ if __name__ == "__main__":
 
 
 
-    #将读取的实体保存成文件，放到data中
-    all_entity = {k: list(set(v)) if k != "疾病"  else v for k, v in all_entity.items()}
-    for name,entity in all_entity.items():
-        with open(os.path.join('data','ent1',f"{name}.txt"),'w',encoding='utf-8') as f:
-            if name=='疾病':
-                en_name=[en['名称'].strip('，') for en in entity if (len(en)<=15 or random.random()<0.2) and len(en)>=2]
-                f.write("\n".join(en_name))
-            else:
-                entity = [en.strip('，') for en in entity if (len(en)<=15 or random.random()<0.2) and len(en)>=2]
-                f.write("\n".join(entity))
+
+
+
     relationship = list(set(relationship))
 
 
@@ -168,6 +195,26 @@ if __name__ == "__main__":
     #     else:
     #         import_disease_data(client,k,all_entity[k])
     # create_all_relationship(client,relationship)
+
+
+
+    #将读取的实体保存成文件，放到data中
+    now_entity = all_entity.copy()['疾病']
+    all_entity['疾病'] = [en['名称'] for en in all_entity['疾病']]
+    all_entity = {k: list(set(v))  for k, v in all_entity.items()}
+    rule = rule_find(all_entity)
+    for des in tqdm(now_entity):
+        rule.find(des['疾病简介'])
+        rule.find(des['疾病病因'])
+        rule.find(des['预防措施'])
+    for name, entity in cipin.items():
+        with open(os.path.join('data', 'ent1', f'{name}.txt'), 'w', encoding='utf-8') as f:
+            for en, num in entity.items():
+                f.write(f"{en} {num}\n")
+    # for name,entity in all_entity.items():
+    #     with open(os.path.join('data','ent1',f"{name}.txt"),'w',encoding='utf-8') as f:
+    #         entity = [en.strip('，') for en in entity if (len(en)<=15 or random.random()<0.2) and len(en)>=2]
+    #         f.write("\n".join(entity))
 
 
 
