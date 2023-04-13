@@ -2,6 +2,8 @@ import random
 import torch
 from torch import nn
 import os
+import pickle
+
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset,DataLoader
 from transformers import BertModel,BertTokenizer
@@ -110,7 +112,7 @@ class tfidf_alignment():
                 self.tag_2_embs[ty] = embs
                 self.tag_2_tfidf_model[ty] = tfidf_model
     def align(self,ent_list):
-        new_result = []
+        new_result = {}
         for s,e,cls,ent in ent_list:
             ent_emb = self.tag_2_tfidf_model[cls].transform([ent])
             sim_score = cosine_similarity(ent_emb, self.tag_2_embs[cls])
@@ -118,7 +120,7 @@ class tfidf_alignment():
             max_score = sim_score[0][max_idx]
 
             if max_score >= 0.5:
-                new_result.append((s, e, cls, self.tag_2_entity[cls][max_idx]))
+                new_result[cls]= self.tag_2_entity[cls][max_idx]
         return new_result
 
 
@@ -252,6 +254,8 @@ class Bert_Model(nn.Module):
             return loss
         else:
             return torch.argmax(pre,dim=-1).squeeze(0)
+
+
 def merge(model_result_word,rule_result):
     result = model_result_word+rule_result
     result = sorted(result,key=lambda x:len(x[-1]),reverse=True)
@@ -265,10 +269,39 @@ def merge(model_result_word,rule_result):
             mp[i] = 1
     return check_result
 
+def get_ner_result(model,tokenizer,sen,rule,tfidf_r,device,idx2tag):
+    sen_to = tokenizer.encode(sen, add_special_tokens=True, return_tensors='pt').to(device)
+
+    pre = model(sen_to).tolist()
+
+    pre_tag = [idx2tag[i] for i in pre[1:-1]]
+    model_result = find_entities(pre_tag)
+    model_result_word = []
+    for res in model_result:
+        word = sen[res[0]:res[1] + 1]
+        model_result_word.append((res[0], res[1], res[2], word))
+    rule_result = rule.find(sen)
+
+    merge_result = merge(model_result_word, rule_result)
+    # print('模型结果',model_result_word)
+    # print('规则结果',rule_result)
+    tfidf_result = tfidf_r.align(merge_result)
+    #print('整合结果', merge_result)
+    #print('tfidf对齐结果', tfidf_result)
+    return tfidf_result
+
 if __name__ == "__main__":
     all_text,all_label = get_data(os.path.join('data','prodata','all_ner_data.txt'))
     train_text, dev_text, train_label, dev_label = train_test_split(all_text, all_label, test_size = 0.02, random_state = 42)
-    tag2idx = build_tag2idx(all_label)
+    if os.path.exists('tag2idx.npy'):
+        with open('tag2idx.npy','rb') as f:
+            tag2idx = pickle.load(f)
+    else:
+        tag2idx = build_tag2idx(all_label)
+        with open('tag2idx.npy','wb') as f:
+            pickle.dump(tag2idx,f)
+
+
     idx2tag = list(tag2idx)
 
     max_len = 50
@@ -331,27 +364,9 @@ if __name__ == "__main__":
                 torch.save(model.state_dict(),'best_model.pt')
             else:print(f'e={e},loss={loss_sum/ba:.5f} f1={f1:.5f}')
 
-
     rule = rule_find()
     tfidf_r = tfidf_alignment()
-    print("")
-    while True:
-        sen = input('请输入识别的话:')
-        sen_to = tokenizer.encode(sen,add_special_tokens=True,return_tensors='pt').to(device)
 
-        pre = model(sen_to).tolist()
-
-        pre_tag = [idx2tag[i] for i in pre[1:-1]]
-        model_result = find_entities(pre_tag)
-        model_result_word = []
-        for res in model_result:
-            word = sen[res[0]:res[1]+1]
-            model_result_word.append((res[0],res[1],res[2],word))
-        rule_result = rule.find(sen)
-
-        merge_result = merge(model_result_word,rule_result)
-        # print('模型结果',model_result_word)
-        # print('规则结果',rule_result)
-        tfidf_result = tfidf_r.align(merge_result)
-        print('整合结果',merge_result)
-        print('tfidf对齐结果', tfidf_result)
+    while(True):
+        sen = input('请输入:')
+        print(get_ner_result(model, tokenizer, sen, rule, tfidf_r,device,idx2tag))
