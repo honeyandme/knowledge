@@ -11,7 +11,6 @@ import ahocorasick
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-
 def get_data(path,max_len=None):
     all_text,all_tag = [],[]
     with open(path,'r',encoding='utf8') as f:
@@ -52,18 +51,23 @@ class rule_find:
     def find(self,sen):
         rule_result = []
         mp = {}
+        all_res = []
+        all_ty = []
         for i in range(len(self.ahos)):
-            all_res = list(self.ahos[i].iter(sen))
-            if len(all_res)!=0:
-                all_res = sorted(all_res,key=lambda x:len(x[1]),reverse=True)
-                for res in all_res:
-                    be =res[0]-len(res[1])+1
-                    ed = res[0]
-                    if be in mp or ed in mp:
-                        continue
-                    rule_result.append((be,ed,self.idx2type[i],res[1]))
-                    for t in range(be,ed+1):
-                        mp[t] = 1
+            now = list(self.ahos[i].iter(sen))
+            all_res.extend(now)
+            for j in range(len(now)):
+                all_ty.append(self.idx2type[i])
+        if len(all_res) != 0:
+            all_res = sorted(all_res, key=lambda x: len(x[1]), reverse=True)
+            for i,res in enumerate(all_res):
+                be = res[0] - len(res[1]) + 1
+                ed = res[0]
+                if be in mp or ed in mp:
+                    continue
+                rule_result.append((be, ed, all_ty[i], res[1]))
+                for t in range(be, ed + 1):
+                    mp[t] = 1
         return rule_result
 
 
@@ -85,6 +89,37 @@ def find_entities(tag):
     return result
 
 
+class tfidf_alignment():
+    def __init__(self):
+        eneities_path = os.path.join('data', 'ent')
+        files = os.listdir(eneities_path)
+        files = [docu for docu in files if '.py' not in docu]
+
+        self.tag_2_embs = {}
+        self.tag_2_tfidf_model = {}
+        self.tag_2_entity = {}
+        for ty in files:
+            with open(os.path.join(eneities_path, ty), 'r', encoding='utf-8') as f:
+                entities = f.read().split('\n')
+                entities = [ent for ent in entities if len(ent.split(' ')[0]) <= 15 and len(ent.split(' ')[0]) >= 1]
+                en_name = [ent.split(' ')[0] for ent in entities]
+                ty = ty.strip('.txt')
+                self.tag_2_entity[ty] = en_name
+                tfidf_model = TfidfVectorizer(analyzer="char")
+                embs = tfidf_model.fit_transform(en_name).toarray()
+                self.tag_2_embs[ty] = embs
+                self.tag_2_tfidf_model[ty] = tfidf_model
+    def align(self,ent_list):
+        new_result = []
+        for s,e,cls,ent in ent_list:
+            ent_emb = self.tag_2_tfidf_model[cls].transform([ent])
+            sim_score = cosine_similarity(ent_emb, self.tag_2_embs[cls])
+            max_idx = sim_score[0].argmax()
+            max_score = sim_score[0][max_idx]
+
+            if max_score >= 0.5:
+                new_result.append((s, e, cls, self.tag_2_entity[cls][max_idx]))
+        return new_result
 
 
 class Entity_Extend:
@@ -104,7 +139,6 @@ class Entity_Extend:
                 type = type.strip('.txt')
                 self.type2entity[type] = en_name
                 self.type2weight[type] = en_weight
-        print()
     def no_work(self,te,tag,type):
         return te,tag
 
@@ -299,6 +333,7 @@ if __name__ == "__main__":
 
 
     rule = rule_find()
+    tfidf_r = tfidf_alignment()
     print("")
     while True:
         sen = input('请输入识别的话:')
@@ -315,6 +350,8 @@ if __name__ == "__main__":
         rule_result = rule.find(sen)
 
         merge_result = merge(model_result_word,rule_result)
-        print('模型结果',model_result_word)
-        print('规则结果',rule_result)
+        # print('模型结果',model_result_word)
+        # print('规则结果',rule_result)
+        tfidf_result = tfidf_r.align(merge_result)
         print('整合结果',merge_result)
+        print('tfidf对齐结果', tfidf_result)
