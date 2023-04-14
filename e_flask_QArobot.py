@@ -4,7 +4,21 @@ from transformers import BertModel,BertTokenizer
 import torch
 import pickle
 import py2neo
-import random
+from flask import Flask,render_template,request
+import jieba
+
+app=Flask(__name__)
+@app.route("/",methods=["GET","POST"])
+def qa():
+    global r
+    if request.method == "GET":
+        return render_template("index.html")
+    else:
+        inputtext = request.form.get("inputtext")
+        r+="user:"+inputtext+'\n'
+        entities_result = zwk.get_ner_result(model, tokenizer, inputtext, rule, tfidf_r, device, idx2tag)
+        r += "robot:"+QA.ask(inputtext,entities_result)+'\n\n'
+        return render_template("index.html", data=r)
 def get_pre_tool():
     rule = zwk.rule_find()
     tfidf_r = zwk.tfidf_alignment()
@@ -117,9 +131,12 @@ if __name__=="__main__":
     rule, tfidf_r, tokenizer, model,device,tag2idx = get_pre_tool()
     idx2tag = list(tag2idx)
     QA = QuestionCls(client)
-    while(True):
-        sen = input('请输入:')
-        entities_result = zwk.get_ner_result(model, tokenizer, sen, rule, tfidf_r,device,idx2tag)
-        print(entities_result)
-        res = QA.ask(sen,entities_result)
-        print(res)
+    r = ""
+    app.run(host="127.0.0.1", port=9999, debug=True)
+
+    # while(True):
+    #     sen = input('请输入:')
+    #     entities_result = zwk.get_ner_result(model, tokenizer, sen, rule, tfidf_r,device,idx2tag)
+    #     print(entities_result)
+    #     res = QA.ask(sen,entities_result)
+    #     print(res)
